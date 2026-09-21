@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 import uuid
 
+from .audit import AuditTrail, record
+from .costs import FeeSchedule
 from .models import Fill, Market, MarketSnapshot, Order, OrderBook, OrderSide, OrderStatus, OrderType, floor_to_increment, dec, utc_now, ZERO
 from .persistence import SQLiteStore
 from .portfolio import AccountingError, Portfolio
@@ -19,14 +21,16 @@ class PaperExecutionError(ValueError):
 class ExecutionConfig:
     default_taker_fee: Decimal = Decimal("0.004")
     market_slippage_bps: Decimal = Decimal("5")
+    fee_schedule: FeeSchedule | None = None
 
 
 class PaperExecutionEngine:
-    def __init__(self, markets: dict[str, Market], portfolio: Portfolio, config: ExecutionConfig | None = None, store: SQLiteStore | None = None):
+    def __init__(self, markets: dict[str, Market], portfolio: Portfolio, config: ExecutionConfig | None = None, store: SQLiteStore | None = None, audit: AuditTrail | None = None):
         self.markets = markets
         self.portfolio = portfolio
         self.config = config or ExecutionConfig()
         self.store = store
+        self.audit = audit or store
 
     def submit_order(self, symbol: str, side: OrderSide | str, order_type: OrderType | str, quantity: Decimal, limit_price: Decimal | None = None, reference_price: Decimal | None = None) -> Order:
         market = self._market(symbol)
@@ -45,9 +49,7 @@ class PaperExecutionEngine:
         if limit_price is not None:
             limit_price = floor_to_increment(dec(limit_price), market.rules.price_increment)
         order = Order(str(uuid.uuid4()), market.symbol, side, order_type, qty, limit_price)
-        fee_rate = market.rules.taker_fee if order_type is OrderType.MARKET else market.rules.maker_fee
-        if not fee_rate:
-            fee_rate = self.config.default_taker_fee
+        fee_rate = self._fee_rate(market, order_type)
         # Reserve a slippage cushion for market buys, preventing a book move from
         # silently spending unreserved cash.
         if order_type is OrderType.MARKET and side is OrderSide.BUY:
@@ -57,6 +59,7 @@ class PaperExecutionEngine:
         except AccountingError as exc:
             raise PaperExecutionError(str(exc)) from exc
         self._save_order(order)
+        record(self.audit, "order_submitted", {"order_id": order.id, "symbol": order.symbol, "side": order.side.value, "type": order.type.value, "quantity": str(order.quantity), "limit_price": str(order.limit_price) if order.limit_price is not None else None})
         return order
 
     def process_snapshot(self, snapshot: MarketSnapshot) -> tuple[Fill, ...]:
@@ -78,6 +81,7 @@ class PaperExecutionEngine:
             return
         self.portfolio.finalize_order(order_id, canceled=True)
         self._save_order(order)
+        record(self.audit, "order_canceled", {"order_id": order.id, "symbol": order.symbol})
 
     def _match(self, order: Order, market: Market, book: OrderBook) -> list[Fill]:
         levels = book.asks if order.side is OrderSide.BUY else book.bids
@@ -102,8 +106,7 @@ class PaperExecutionEngine:
                 slippage = self.config.market_slippage_bps / Decimal("10000")
                 price = price * (Decimal("1") + slippage if order.side is OrderSide.BUY else Decimal("1") - slippage)
                 price = floor_to_increment(price, market.rules.price_increment)
-            fee_rate = market.rules.taker_fee if order.type is OrderType.MARKET else market.rules.maker_fee
-            fee_rate = fee_rate or self.config.default_taker_fee
+            fee_rate = self._fee_rate(market, order.type)
             fee = qty * price * fee_rate
             fill = Fill(str(uuid.uuid4()), order.id, order.symbol, order.side, qty, price, fee, market.quote_asset)
             try:
@@ -114,6 +117,7 @@ class PaperExecutionEngine:
             remaining = order.remaining_quantity
             if self.store:
                 self.store.record_fill(fill)
+            record(self.audit, "execution_fill", {"fill_id": fill.id, "order_id": fill.order_id, "symbol": fill.symbol, "side": fill.side.value, "quantity": str(fill.quantity), "price": str(fill.price), "fee": str(fill.fee), "fee_asset": fill.fee_asset})
         order.updated_at = utc_now()
         if order.remaining_quantity == ZERO:
             self.portfolio.finalize_order(order.id)
@@ -132,3 +136,9 @@ class PaperExecutionEngine:
     def _save_order(self, order: Order) -> None:
         if self.store:
             self.store.record_order(order)
+
+    def _fee_rate(self, market: Market, order_type: OrderType) -> Decimal:
+        if self.config.fee_schedule is not None:
+            return self.config.fee_schedule.rate(maker=order_type is OrderType.LIMIT)
+        fee_rate = market.rules.taker_fee if order_type is OrderType.MARKET else market.rules.maker_fee
+        return fee_rate or self.config.default_taker_fee

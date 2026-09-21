@@ -149,6 +149,6 @@ class KrakenPublicAdapter:
             output.append(OHLCV(datetime.fromtimestamp(int(row[0]), timezone.utc), dec(row[1]), dec(row[2]), dec(row[3]), dec(row[4]), dec(row[6]), dec(row[5]), int(row[7]), True))
         return output
 
-    def fetch_snapshot(self, symbol: str, timeframe: str = "1h", limit: int = 200) -> MarketSnapshot:
+    def fetch_snapshot(self, symbol: str, timeframe: str = "1h", limit: int = 200, depth: int | None = None) -> MarketSnapshot:
         market = self._market(symbol)
-        return MarketSnapshot(market, self.fetch_ticker(market.symbol), self.fetch_order_book(market.symbol, self.default_order_book_depth), tuple(self.fetch_ohlcv(market.symbol, timeframe, limit)))
+        return MarketSnapshot(market, self.fetch_ticker(market.symbol), self.fetch_order_book(market.symbol, depth or self.default_order_book_depth), tuple(self.fetch_ohlcv(market.symbol, timeframe, limit)))

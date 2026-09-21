@@ -23,9 +23,8 @@ class MarketDataCollector:
         self.ohlcv_limit = ohlcv_limit
 
     def collect(self, symbol: str, timeframe: str = "1h") -> NormalizedSnapshot:
-        snapshot = self.provider.fetch_snapshot(symbol, timeframe, self.ohlcv_limit)
+        snapshot = self.provider.fetch_snapshot(symbol, timeframe, self.ohlcv_limit, self.order_book_depth)
         spread = snapshot.order_book.spread
         midpoint = snapshot.order_book.midpoint
         spread_bps = (spread / midpoint * Decimal("10000")) if spread is not None and midpoint else None
         return NormalizedSnapshot(snapshot, spread, spread_bps)
-

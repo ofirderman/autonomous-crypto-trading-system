@@ -11,9 +11,39 @@ initial_cash = "118.85"
 default_taker_fee = "0.004"
 market_slippage_bps = "5"
 
+[fees]
+default_maker = "0.004"
+default_taker = "0.004"
+# Optional volume tiers. Rates are fractions, e.g. 0.004 = 0.40%.
+# tiers = [
+#   { volume_threshold = "0", maker = "0.004", taker = "0.004" },
+#   { volume_threshold = "100000", maker = "0.0025", taker = "0.004" },
+# ]
+
 [market_data]
 base_url = "https://api.kraken.com/0/public"
 order_book_depth = 25
 ohlcv_limit = 200
 request_timeout_seconds = 15
 
+[discovery]
+min_volume_24h_quote = "0"
+min_depth_quote = "0"
+max_spread_bps = "100"
+max_round_trip_cost_bps = "250"
+min_ohlcv_rows = 50
+sample_notional_quote = "10"
+require_online = true
+
+[risk]
+accounting_currency = "USD"
+initial_capital = "118.85"
+max_gross_exposure_fraction = "0.80"
+max_position_fraction = "0.25"
+max_position_risk_fraction = "0.02"
+max_concurrent_positions = 3
+max_spread_bps = "100"
+max_slippage_bps = "100"
+stale_after_seconds = 300
+max_drawdown_fraction = "0.10"
+emergency_shutdown = false

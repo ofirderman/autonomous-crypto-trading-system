@@ -13,14 +13,14 @@ from .market_data import MarketDataCollector
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect public Kraken market data (paper-only Phase 1)")
+    parser = argparse.ArgumentParser(description="Collect public Kraken market data (paper-only Phase 1-2)")
     parser.add_argument("--config", default=None)
     parser.add_argument("--market", default="BTC/USD")
     parser.add_argument("--timeframe", default="1h")
     parser.add_argument("--once", action="store_true", help="required safety acknowledgement for the one-shot collection")
     args = parser.parse_args()
     if not args.once:
-        parser.error("--once is required; Phase 1 has no live or continuous trading command")
+        parser.error("--once is required; this release has no live or continuous trading command")
     config = load_config(args.config)
     configure_logging(config.log_level)
     adapter = KrakenPublicAdapter(config.base_url, config.request_timeout_seconds, default_order_book_depth=config.order_book_depth)

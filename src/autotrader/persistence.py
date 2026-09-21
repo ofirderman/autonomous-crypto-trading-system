@@ -9,6 +9,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from .audit import AuditEvent
 from .models import Fill, Order, Position
 from .portfolio import Portfolio
 
@@ -44,6 +45,10 @@ class SQLiteStore:
             available TEXT NOT NULL, reserved TEXT NOT NULL, positions TEXT NOT NULL,
             realized_pnl TEXT NOT NULL, total_fees TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS audit_events (
+            event_id TEXT PRIMARY KEY, timestamp TEXT NOT NULL,
+            event_type TEXT NOT NULL, payload TEXT NOT NULL
+        );
         """)
         self.connection.commit()
 
@@ -71,6 +76,11 @@ class SQLiteStore:
         self.connection.execute("INSERT INTO events(timestamp, event_type, payload) VALUES (?, ?, ?)", (self._iso(datetime.now(timezone.utc)), event_type, json.dumps(payload, default=str, sort_keys=True)))
         self.connection.commit()
 
+    def append(self, event: AuditEvent) -> None:
+        """Append an immutable audit event; no replace/update path is provided."""
+        self.connection.execute("INSERT INTO audit_events(event_id, timestamp, event_type, payload) VALUES (?, ?, ?, ?)", (event.event_id, self._iso(event.timestamp), event.event_type, event.as_json()))
+        self.connection.commit()
+
     def snapshot(self, portfolio: Portfolio) -> None:
         positions = {asset: {"quantity": str(p.quantity), "cost_basis": str(p.cost_basis)} for asset, p in portfolio.positions.items()}
         self.connection.execute("INSERT INTO portfolio_snapshots(timestamp, available, reserved, positions, realized_pnl, total_fees) VALUES (?, ?, ?, ?, ?, ?)", (
@@ -82,4 +92,3 @@ class SQLiteStore:
 
     def close(self) -> None:
         self.connection.close()
-
