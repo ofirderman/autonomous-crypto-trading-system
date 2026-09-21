@@ -1,0 +1,19 @@
+[system]
+exchange = "kraken"
+paper_only = true
+live_trading_enabled = false
+database_path = "data/trading.sqlite3"
+log_level = "INFO"
+
+[paper]
+initial_quote_asset = "USD"
+initial_cash = "118.85"
+default_taker_fee = "0.004"
+market_slippage_bps = "5"
+
+[market_data]
+base_url = "https://api.kraken.com/0/public"
+order_book_depth = 25
+ohlcv_limit = 200
+request_timeout_seconds = 15
+
